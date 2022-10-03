@@ -5,6 +5,7 @@ import com.example.flows.commandscheduler.models.*
 import com.example.flows.commandscheduler.states.DeviceState
 import com.example.flows.commandscheduler.states.KioskLockState
 import com.example.flows.commandscheduler.states.Status
+import com.example.flows.commandscheduler.states.UninstallState
 
 class CommandScheduler {
 
@@ -19,8 +20,7 @@ class CommandScheduler {
 
         when(command.channel) {
             Channel.MANUAL -> execute(command, Reason.MANUAL_CHANNEL)
-            else ->
-            when(isDeviceAlreadyInCommandedState(command.incomingCommand)) {
+            else -> when(isDeviceAlreadyInCommandedState(command.incomingCommand)) {
                 Status.YES -> commandNotExecuted(command, Reason.DEVICE_IS_ALREADY_IN_COMMANDED_STATE)
                 Status.NO -> proceed(command)
                 Status.UNKNOWN -> proceed(command)
@@ -32,8 +32,7 @@ class CommandScheduler {
         when (commandHistory.isEmpty()) {
             true -> execute(command, Reason.COMMAND_HISTORY_WAS_EMPTY)
             false -> {
-                val existingCommandWithSameId: IncomingCommand =
-                    checkIfAnyCommandExistForThisID(command.commandID) ?: run {
+                val existingCommandWithSameId: IncomingCommand = checkIfAnyCommandExistForThisID(command.commandID) ?: run {
                         execute(command,
                             Reason.COMMAND_WITH_THIS_ID_IS_NOT_PRESENT_IN_COMMAND_HISTORY)
                         return
@@ -61,13 +60,13 @@ class CommandScheduler {
             is KioskLockState.Unlocked -> Status.YES
             is KioskLockState.Unknown -> Status.UNKNOWN
         }
+        IncomingCommand.UNINSTALL -> when(deviceState.uninstallState) {
+            is UninstallState.CommandIssued -> Status.YES
+            is UninstallState.CommandNotIssued -> Status.NO
+        }
     }
 
-    private fun checkIfAnyCommandExistForThisID(commandID: Long): IncomingCommand? = when(commandHistory[commandID]) {
-        IncomingCommand.KIOSK -> IncomingCommand.KIOSK
-        IncomingCommand.UNKIOSK -> IncomingCommand.UNKIOSK
-        null -> null
-    }
+    private fun checkIfAnyCommandExistForThisID(commandID: Long): IncomingCommand? = commandHistory[commandID]
 
     private fun execute(command: Command, reason: Reason) {
         when(command.incomingCommand) {
@@ -78,6 +77,11 @@ class CommandScheduler {
             }
             IncomingCommand.UNKIOSK -> {
                 deviceState.kioskLockState = KioskLockState.Unlocked
+                commandExecuted(command, reason)
+                commandHistory[command.commandID] = command.incomingCommand
+            }
+            IncomingCommand.UNINSTALL -> {
+                deviceState.uninstallState = UninstallState.CommandIssued
                 commandExecuted(command, reason)
                 commandHistory[command.commandID] = command.incomingCommand
             }
